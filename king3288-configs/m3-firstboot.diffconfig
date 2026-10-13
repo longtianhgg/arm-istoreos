@@ -1,0 +1,12 @@
+CONFIG_TARGET_rockchip=y
+CONFIG_TARGET_rockchip_armv7=y
+CONFIG_TARGET_rockchip_armv7_DEVICE_king3288=y
+CONFIG_BUSYBOX_CUSTOM=y
+# CONFIG_FEED_luci is not set
+# CONFIG_FEED_packages is not set
+# CONFIG_FEED_routing is not set
+# CONFIG_FEED_store is not set
+# CONFIG_FEED_telephony is not set
+# CONFIG_FEED_third is not set
+CONFIG_TARGET_ROOTFS_PARTSIZE=512
+CONFIG_TARGET_ROOTFS_TARGZ=y
