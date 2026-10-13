@@ -1,0 +1,446 @@
+diff -urN a/arch/arm/boot/dts/rockchip/Makefile b/arch/arm/boot/dts/rockchip/Makefile
+--- a/arch/arm/boot/dts/rockchip/Makefile	2026-09-23 08:49:03.908149213 +0800
++++ b/arch/arm/boot/dts/rockchip/Makefile	2026-09-23 08:49:03.925126019 +0800
+@@ -21,6 +21,7 @@
+ 	rk3229-xms6.dtb \
+ 	rk3288-evb-act8846.dtb \
+ 	rk3288-evb-rk808.dtb \
++	rk3288-king3288.dtb \
+ 	rk3288-firefly-beta.dtb \
+ 	rk3288-firefly.dtb \
+ 	rk3288-firefly-reload.dtb \
+diff -urN a/arch/arm/boot/dts/rockchip/rk3288-king3288.dts b/arch/arm/boot/dts/rockchip/rk3288-king3288.dts
+--- a/arch/arm/boot/dts/rockchip/rk3288-king3288.dts	1970-01-01 08:00:00.000000000 +0800
++++ b/arch/arm/boot/dts/rockchip/rk3288-king3288.dts	2026-09-23 08:49:03.912480240 +0800
+@@ -0,0 +1,430 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * KING3288 mainline bring-up device tree
++ *
++ * Target kernel: Linux v6.6.x, ARMv7
++ * Boot assumption for this revision:
++ *   Keep the vendor RK3288 loader / U-Boot / trust.img.
++ *
++ * Phase-1 goals only:
++ *   - UART2 console
++ *   - eMMC (conservative high-speed mode first)
++ *   - RGMII GMAC / RTL8211E-class PHY
++ *   - USB host / OTG
++ *
++ * Hardware facts migrated from the vendor 4.4 DTS chain:
++ *   king3288-linux.dts
++ *     -> rk3288-evb-act8846.dtsi
++ *        -> rk3288-evb.dtsi
++ *        -> rk3288-linux.dtsi
++ *
++ * Intentionally omitted for first bring-up:
++ *   HDMI/display, GPU, audio, cameras, sensors, SDIO Wi-Fi/BT,
++ *   vendor rp_gpio/rp_power userspace ABI and vendor DMC/devfreq code.
++ */
++
++/dts-v1/;
++
++#include "rk3288.dtsi"
++
++/ {
++	model = "KING3288";
++	compatible = "rockchip,king-rp3288-act8846", "rockchip,rk3288";
++
++	chosen {
++		/* Vendor BSP used UART2 through rockchip,fiq-debugger. */
++		stdout-path = "serial2:115200n8";
++	};
++	
++	vcc_sd: regulator-vcc-sd {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_sd";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-boot-on;
++		vin-supply = <&vcc_io>;
++	};
++
++	memory@0 {
++    		device_type = "memory";
++
++    		/*
++     		* Match vendor U-Boot bdinfo.
++     		*
++     		* 0x00000000 - 0x083fffff : usable
++     		* 0x08400000 - 0x091fffff : Trust/TEE reserved
++     		* 0x09200000 - 0x7fffffff : usable
++     		*/
++    		reg = <0x00000000 0x08400000>,
++          	      <0x09200000 0x76e00000>;
++	};
++
++	/* The vendor EVB tree feeds SCLK_MAC from an external 125 MHz clock. */
++	ext_gmac: external-gmac-clock {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-frequency = <125000000>;
++		clock-output-names = "ext_gmac";
++	};
++
++	/* Input supply used by the PMIC and CPU/GPU buck converters. */
++	vcc_sys: regulator-vcc-sys {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_sys";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	/*
++	 * Vendor rk3288-evb.dtsi describes PHY power as always-on 3.3 V and
++	 * deliberately comments out the original EVB GPIO0_A6 enable GPIO.
++	 */
++	vcc_phy: regulator-vcc-phy {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_phy";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	/*
++	 * Keep the vendor firmware contract while the old trust.img is in use.
++	 * rk3288-linux.dtsi explicitly switched all four CPUs to PSCI/SMC.
++	 */
++	psci {
++		compatible = "arm,psci-1.0";
++		method = "smc";
++	};
++};
++
++&cpu0 {
++	cpu0-supply = <&vdd_cpu>;
++	enable-method = "psci";
++};
++
++&cpu1 {
++	enable-method = "psci";
++};
++
++&cpu2 {
++	enable-method = "psci";
++};
++
++&cpu3 {
++	enable-method = "psci";
++};
++
++/*
++ * The vendor Linux DTS remapped the secure PL330 DMA controller to the
++ * non-secure address.  Nothing needed for phase-1 uses this DMA engine,
++ * so disabling the secure instance is safer and avoids touching secure
++ * registers while the vendor trust firmware remains active.
++ */
++&dmac_bus_s {
++	status = "disabled";
++};
++
++/*
++ * Vendor 4.4 used compatible = "rockchip,rk3288-secure-efuse".
++ * Mainline v6.12 has no equivalent secure-efuse compatible, and eFuse is
++ * not required for the phase-1 boot test.  Revisit when the boot chain is
++ * replaced or secure eFuse access has been verified.
++ */
++&efuse {
++	status = "disabled";
++};
++
++/* Vendor CPU/GPU power rails and ACT8846 PMIC. */
++&i2c0 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	vdd_cpu: regulator@40 {
++		compatible = "silergy,syr827";
++		reg = <0x40>;
++		fcs,suspend-voltage-selector = <1>;
++		regulator-name = "vdd_cpu";
++		regulator-min-microvolt = <850000>;
++		regulator-max-microvolt = <1350000>;
++		regulator-always-on;
++		regulator-boot-on;
++		regulator-enable-ramp-delay = <300>;
++		regulator-ramp-delay = <8000>;
++		vin-supply = <&vcc_sys>;
++	};
++
++	vdd_gpu: regulator@41 {
++		compatible = "silergy,syr828";
++		reg = <0x41>;
++		fcs,suspend-voltage-selector = <1>;
++		regulator-name = "vdd_gpu";
++		regulator-min-microvolt = <850000>;
++		regulator-max-microvolt = <1350000>;
++		regulator-always-on;
++		regulator-ramp-delay = <6000>;
++		vin-supply = <&vcc_sys>;
++	};
++
++	act8846: pmic@5a {
++		compatible = "active-semi,act8846";
++		reg = <0x5a>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&pmic_vsel>, <&pwr_hold>;
++		system-power-controller;
++		status = "okay";
++
++		vp1-supply = <&vcc_sys>;
++		vp2-supply = <&vcc_sys>;
++		vp3-supply = <&vcc_sys>;
++		vp4-supply = <&vcc_sys>;
++		inl1-supply = <&vcc_io>;
++		inl2-supply = <&vcc_sys>;
++		inl3-supply = <&vcc_20>;
++
++		regulators {
++			vcc_ddr: REG1 {
++				regulator-name = "VCC_DDR";
++				regulator-min-microvolt = <1200000>;
++				regulator-max-microvolt = <1200000>;
++				regulator-always-on;
++			};
++
++			vcc_io: REG2 {
++				regulator-name = "VCC_IO";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-always-on;
++			};
++
++			vdd_log: REG3 {
++				regulator-name = "VDD_LOG";
++				regulator-min-microvolt = <1100000>;
++				regulator-max-microvolt = <1100000>;
++				regulator-always-on;
++			};
++
++			vcc_20: REG4 {
++				regulator-name = "VCC_20";
++				regulator-min-microvolt = <2000000>;
++				regulator-max-microvolt = <2000000>;
++				regulator-always-on;
++			};
++
++			vccio_sd: REG5 {
++				regulator-name = "VCCIO_SD";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-always-on;
++			};
++
++			vdd10_lcd: REG6 {
++				regulator-name = "VDD10_LCD";
++				regulator-min-microvolt = <1000000>;
++				regulator-max-microvolt = <1000000>;
++				regulator-always-on;
++			};
++
++			vcca_codec: REG7 {
++				regulator-name = "VCCA_CODEC";
++				regulator-min-microvolt = <2800000>;
++				regulator-max-microvolt = <2800000>;
++				regulator-always-on;
++			};
++
++			vcca_tp: REG8 {
++				regulator-name = "VCCA_TP";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-always-on;
++			};
++
++			vccio_pmu: REG9 {
++				regulator-name = "VCCIO_PMU";
++				regulator-min-microvolt = <3300000>;
++				regulator-max-microvolt = <3300000>;
++				regulator-always-on;
++			};
++
++			vdd_10: REG10 {
++				regulator-name = "VDD_10";
++				regulator-min-microvolt = <1000000>;
++				regulator-max-microvolt = <1000000>;
++				regulator-always-on;
++			};
++
++			vcc_18: REG11 {
++				regulator-name = "VCC_18";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-always-on;
++			};
++
++			vcc18_lcd: REG12 {
++				regulator-name = "VCC18_LCD";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-always-on;
++			};
++		};
++	};
++};
++
++&pinctrl {
++	act8846 {
++		pmic_vsel: pmic-vsel {
++			/* vendor GPIO7_B2 */
++			rockchip,pins = <7 RK_PB2 RK_FUNC_GPIO &pcfg_pull_down>;
++		};
++
++		pwr_hold: pwr-hold {
++			/* vendor GPIO0_B2 */
++			rockchip,pins = <0 RK_PB2 RK_FUNC_GPIO &pcfg_pull_up>;
++		};
++	};
++};
++
++/* Replacements for vendor rp_power GPIO_FUNCTION_OUTPUT_CTRL entries. */
++&gpio6 {
++	king_5v_en_hog: king-5v-en-hog {
++		gpio-hog;
++		gpios = <RK_PA5 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "king-5v-enable";
++	};
++
++	king_3v3_en_hog: king-3v3-en-hog {
++		gpio-hog;
++		gpios = <RK_PA6 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "king-3v3-enable";
++	};
++
++	king_5v_en_2_hog: king-5v-en-2-hog {
++		gpio-hog;
++		gpios = <RK_PA7 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "king-5v-enable-2";
++	};
++};
++
++&gpio7 {
++	king_fan_hog: king-fan-hog {
++		gpio-hog;
++		gpios = <RK_PC5 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "king-fan-enable";
++	};
++};
++
++&gpio5 {
++	king_usb_hub_reset_hog: king-usb-hub-reset-hog {
++		gpio-hog;
++		gpios = <RK_PB5 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "king-usb-hub-reset";
++	};
++};
++
++/*
++ * First eMMC boot: deliberately conservative.
++ * Vendor settings prove HS200/DDR 1.8 V support, but start at <=52 MHz
++ * high-speed mode so eMMC enumeration and rootfs boot are easier to debug.
++ * Restore max-frequency=100000000, mmc-hs200-1_8v and mmc-ddr-1_8v after
++ * the basic bring-up is stable.
++ */
++&emmc {
++	bus-width = <8>;
++	cap-mmc-highspeed;
++	disable-wp;
++	non-removable;
++	max-frequency = <52000000>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&emmc_clk>, <&emmc_cmd>, <&emmc_pwr>, <&emmc_bus8>;
++	status = "okay";
++};
++
++/* Exact GMAC wiring/settings from the vendor rk3288-evb.dtsi. */
++&gmac {
++	phy-supply = <&vcc_phy>;
++	phy-handle = <&ethphy>;
++	phy-mode = "rgmii";
++	clock_in_out = "input";
++
++	/* GPIO4_A7, active-low PHY reset; vendor final delay is 50 ms. */
++	snps,reset-gpio = <&gpio4 RK_PA7 GPIO_ACTIVE_HIGH>;
++	snps,reset-active-low;
++	snps,reset-delays-us = <0 10000 50000>;
++
++	assigned-clocks = <&cru SCLK_MAC>;
++	assigned-clock-parents = <&ext_gmac>;
++	pinctrl-names = "default";
++	pinctrl-0 = <&rgmii_pins>;
++
++	tx_delay = <0x30>;
++	rx_delay = <0x10>;
++	max-speed = <1000>;
++	status = "okay";
++
++	mdio0 {
++		compatible = "snps,dwmac-mdio";
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		ethphy: ethernet-phy@0 {
++			reg = <0>;
++		};
++	};
++};
++
++/* Replace vendor FIQ console with the normal DesignWare UART2 driver. */
++&uart2 {
++	status = "okay";
++};
++
++/* USB blocks enabled by the vendor EVB DTS. */
++&usbphy {
++	status = "okay";
++};
++
++&usb_host0_ehci {
++	status = "okay";
++};
++
++&usb_host1 {
++	status = "okay";
++};
++
++&usb_otg {
++	status = "okay";
++};
++/*
++ * Vendor Trust/TEE boot chain appears to prevent normal-world access
++ * to the RK3288 MMIO timer at 0xff810000.
++ *
++ * ARM architected timer is already available and working at 24 MHz.
++ */
++&timer {
++	status = "disabled";
++};
++
++&sdmmc {
++	bus-width = <4>;
++	cap-mmc-highspeed;
++	cap-sd-highspeed;
++	disable-wp;
++	max-frequency = <50000000>;
++
++	pinctrl-names = "default";
++	pinctrl-0 = <&sdmmc_clk>,
++		    <&sdmmc_cmd>,
++		    <&sdmmc_cd>,
++		    <&sdmmc_bus4>;
++
++	vmmc-supply = <&vcc_sd>;
++	vqmmc-supply = <&vccio_sd>;
++
++	status = "okay";
++};
+\ No newline at end of file

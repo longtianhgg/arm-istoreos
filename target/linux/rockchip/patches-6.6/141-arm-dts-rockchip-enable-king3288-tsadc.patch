@@ -1,0 +1,20 @@
+--- a/arch/arm/boot/dts/rockchip/rk3288-king3288.dts
++++ b/arch/arm/boot/dts/rockchip/rk3288-king3288.dts
+@@ -410,6 +410,17 @@
+ 	status = "disabled";
+ };
+ 
++&tsadc {
++	/delete-property/ pinctrl-names;
++	/delete-property/ pinctrl-0;
++	/delete-property/ pinctrl-1;
++	/delete-property/ pinctrl-2;
++
++	rockchip,hw-tshut-mode = <0>;
++	rockchip,hw-tshut-polarity = <0>;
++	status = "okay";
++};
++
+ &sdmmc {
+ 	bus-width = <4>;
+ 	cap-mmc-highspeed;
