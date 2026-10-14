@@ -50,8 +50,9 @@ SYS_BOOT=/sys/class/block/${DISK_BASE}p1
 [ -d "$SYS_BOOT" ] || die 'Missing FAT boot p1'
 [ -r "$SYS_DISK/device/type" ] || die 'MMC type unavailable'
 [ "$(cat "$SYS_DISK/device/type")" = SD ] || die 'NOT AN SD CARD: refusing eMMC'
-[ -r "$SYS_DISK/removable" ] || die 'Removable flag unavailable'
-[ "$(cat "$SYS_DISK/removable")" = 1 ] || die 'Not a removable SD disk'
+# The Rockchip MMC host can report removable=0 for a genuine SD card.
+# Real SD identity is validated by device/type=SD, boot PARTUUID, and mounted root.
+# Never use the generic removable flag as a blocking safety condition.
 [ "$(cat "$SYS_DISK/queue/logical_block_size")" = 512 ] || die 'Unexpected sector size'
 
 ROOT_SRC=$(awk '$2=="/" {print $1;exit}' /proc/mounts)
