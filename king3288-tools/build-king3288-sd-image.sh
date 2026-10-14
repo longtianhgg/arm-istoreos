@@ -7,7 +7,7 @@ cd "$ROOT"
 OUT=bin/targets/rockchip/armv7
 WORK=build_dir/king3288-m7-sd-image
 mkdir -p "$WORK" "$OUT"
-RAW="$OUT/istoreos-rockchip-armv7-king3288-sdcard-3g.img"
+RAW="$OUT/istoreos-rockchip-armv7-king3288-sdcard-3g-v2.img"
 GZ="$RAW.gz"
 FAT="$WORK/boot.fat"
 EXT4="$WORK/root.ext4"
@@ -18,6 +18,7 @@ DTB="$KDIR/linux-6.6.144/arch/arm/boot/dts/rockchip/rk3288-king3288.dtb"
 ROOT_TAR="$OUT/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
 EXPAND=king3288-tools/king3288-expand-rootfs.sh
 INIT=king3288-tools/king3288-rootfs-resize.init
+EMMC_PROTECT=target/linux/rockchip/armv7/base-files/etc/uci-defaults/10-king3288-protect-emmc
 PREFIX_SHA=84c08dd990738c1e935f86206a062aa75effc1148039328b5aa1722db818f8e3
 DISK_ID=0x4b328826
 P1_START=32768
@@ -25,9 +26,9 @@ P1_SECTORS=2097152
 P2_START=2129920
 P2_SECTORS=4194304
 TOTAL_SECTORS=$((P2_START + P2_SECTORS))
-for path in "$REF" "$KERNEL" "$DTB" "$ROOT_TAR" "$EXPAND" "$INIT"; do test -s "$path" || { echo "MISSING: $path"; exit 1; }; done
+for path in "$REF" "$KERNEL" "$DTB" "$ROOT_TAR" "$EXPAND" "$INIT" "$EMMC_PROTECT"; do test -s "$path" || { echo "MISSING: $path"; exit 1; }; done
 test "$(cat build_dir/king3288-m6-webplugins/fullbuild.rc)" = M6_WEB_PLUGINS_FULLBUILD_RC=0
-sh -n "$EXPAND"; sh -n "$INIT"
+sh -n "$EXPAND"; sh -n "$INIT"; sh -n "$EMMC_PROTECT"
 test "$(sfdisk -d "$REF" | sed -n 's/^label-id: //p')" = "$DISK_ID"
 test "$(dd if="$REF" bs=512 skip=64 count=206 status=none | sha256sum | awk '{print $1}')" = "$PREFIX_SHA"
 echo "M7_BUILD_READY source and IDB prefix verified"
@@ -39,6 +40,7 @@ fakeroot -- /bin/bash -euc '
  tar --numeric-owner -xzpf "$1" -C "$2"
  install -D -m 0755 "$3" "$2/usr/sbin/king3288-expand-rootfs"
  install -D -m 0755 "$4" "$2/etc/init.d/king3288-rootfs-resize"
+ install -D -m 0755 "$5" "$2/etc/uci-defaults/10-king3288-protect-emmc"
  mkdir -p "$2/root"
  cat > "$2/root/README-KING3288-SD-EXPAND.txt" <<EOF
 KING3288 SD p2 ext4 rootfs expansion
@@ -53,14 +55,18 @@ After reboot:
 The one-shot service finishes resize2fs after reboot, if --apply enabled it.
 Never use the script on eMMC or on the production SD card.
 EOF
- chown 0:0 "$2/usr/sbin/king3288-expand-rootfs" "$2/etc/init.d/king3288-rootfs-resize" "$2/root/README-KING3288-SD-EXPAND.txt"
- truncate -s 2G "$5"
- mkfs.ext4 -q -F -m 1 -L KINGROOT -U 52b116ba-1676-4cb6-a20e-9e80e340cf65 -d "$2" "$5"
-' _ "$ROOT_TAR" "$STAGING" "$EXPAND" "$INIT" "$EXT4"
+ chown 0:0 "$2/usr/sbin/king3288-expand-rootfs" "$2/etc/init.d/king3288-rootfs-resize" "$2/etc/uci-defaults/10-king3288-protect-emmc" "$2/root/README-KING3288-SD-EXPAND.txt"
+ truncate -s 2G "$6"
+ mkfs.ext4 -q -F -m 1 -L KINGROOT -U 52b116ba-1676-4cb6-a20e-9e80e340cf65 -d "$2" "$6"
+' _ "$ROOT_TAR" "$STAGING" "$EXPAND" "$INIT" "$EMMC_PROTECT" "$EXT4"
 echo M7_EXT4_CREATED
 e2fsck -fn "$EXT4" > "$WORK/e2fsck.log" 2>&1 || { tail -n 35 "$WORK/e2fsck.log"; exit 1; }
 debugfs -R 'stat /etc/shadow' "$EXT4" 2>/dev/null | grep -E 'User: *0 *Group: *0' >/dev/null
 debugfs -R 'stat /usr/sbin/king3288-expand-rootfs' "$EXT4" 2>/dev/null | grep -E 'User: *0 *Group: *0' >/dev/null
+debugfs -R 'cat /usr/sbin/king3288-expand-rootfs' "$EXT4" 2>/dev/null | grep -F "NOT AN SD CARD: refusing eMMC" >/dev/null
+if debugfs -R 'cat /usr/sbin/king3288-expand-rootfs' "$EXT4" 2>/dev/null | grep -q "die 'Not a removable SD disk'"; then echo 'Old SD removable blocking check still present'; exit 1; fi
+debugfs -R 'stat /etc/uci-defaults/10-king3288-protect-emmc' "$EXT4" 2>/dev/null | grep -E 'User: *0 *Group: *0' >/dev/null
+debugfs -R 'cat /etc/uci-defaults/10-king3288-protect-emmc' "$EXT4" 2>/dev/null | grep -F "set fstab.emmc_protect.enabled='0'" >/dev/null
 debugfs -R 'cat /root/README-KING3288-SD-EXPAND.txt' "$EXT4" 2>/dev/null | grep -F -- '--apply'
 echo M7_EXT4_METADATA_AND_EXPAND_PAYLOAD_VERIFIED
 
