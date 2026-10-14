@@ -1,0 +1,8 @@
+#!/bin/sh
+# KING3288 iStoreOS: keep an unconfigured Tailscale daemon from starting at first boot.
+# Runs during S10boot, before the stock S80tailscale service.
+# After the user configures Tailscale, /etc/init.d/tailscale enable may be used normally.
+if [ -x /etc/init.d/tailscale ]; then
+    /etc/init.d/tailscale disable
+fi
+exit 0
