@@ -11,7 +11,8 @@ define Device/king3288
   FILESYSTEMS := ext4
   # M5: LuCI/Argon Web UI, validated on KING3288 SD rootfs.
   # luci-mod-admin-full selects status/system/network and iwinfo dependencies.
-  DEVICE_PACKAGES += uhttpd uhttpd-mod-ubus luci-mod-admin-full luci-app-firewall luci-app-store
+  # QuickStart runs under procd; startdhns/automatic network changes excluded.
+  DEVICE_PACKAGES += uhttpd uhttpd-mod-ubus luci-mod-admin-full luci-app-firewall luci-app-store luci-app-quickstart
   IMAGES :=
 endef
 TARGET_DEVICES += king3288

@@ -47,14 +47,13 @@ endef
 define Build/Compile
 endef
 
-# KING3288 first-stage safety: no rc.d, uci-defaults or hotplug actions at install.
-# In particular omit startdhns (uciChange) and all implicit network mutations.
-# The main service script is staged; an operator explicitly installs/starts it
-# only after saving /etc/config/network, dhcp, firewall and checking the IPKs.
+# KING3288: the main procd service was started and tested on real hardware.
+# It can now auto-start at boot. Never package startdhns (uciChange),
+# any automatic network UCI defaults, or network/block hotplug triggers.
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/config $(1)/usr/libexec/quickstart $(1)/usr/share/quickstart
+	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/config $(1)/etc/init.d $(1)/usr/libexec/quickstart $(1)/usr/share/quickstart
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/quickstart.$(PKG_ARCH_quickstart) $(1)/usr/sbin/quickstart
-	$(INSTALL_BIN) ./files/quickstart.init $(1)/usr/libexec/quickstart/quickstart.init
+	$(INSTALL_BIN) ./files/quickstart.init $(1)/etc/init.d/quickstart
 	$(INSTALL_CONF) ./files/quickstart.config $(1)/etc/config/quickstart
 	$(INSTALL_BIN) ./files/dhcpvalid.sh $(1)/usr/libexec/quickstart/dhcpvalid.sh
 	$(INSTALL_DATA) ./files/manuf $(1)/usr/share/quickstart/manuf

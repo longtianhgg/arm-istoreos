@@ -1,4 +1,6 @@
-# M5.3 QuickStart safe ARMv7 adapter — build-stage audit (2026-10-14)
+# M5.3 QuickStart safe ARMv7 adapter — staged and runtime audit (2026-10-14)
+
+> Read the latest **M5.3 finalization** section at the bottom for the current verified status. Earlier sections preserve the deliberately cautious pre-runtime build-stage record.
 
 ## Baselines (do not change)
 - KING3288 iStoreOS 24.10.8 / Linux 6.6.144 boots via original U-Boot → SD p1 extlinux → SD p2 ext4. eMMC hosts production Ubuntu, and must remain untouched.
@@ -36,3 +38,14 @@
 - Staged exactly 53 new IPKs (8.3 MiB) and checked them against the previous iStore 154-package manifest: UNMET_DEPS=[], FORBIDDEN_PAYLOADS=[], RESULT PASS. Installer script separately validates model, PARTUUID, LAN, DHCP server, gateway, DNS; backs up /etc/config/{network,dhcp,firewall,fstab}, and compares after installation. Installer intentionally does not start QuickStart.
 - LAN HTTP package: http://192.168.50.25:8765/m5-quickstart-armv7.tar.gz, SHA256 bb9b974560994eea287016be845944c602be3d2f9f759a4b940f7566ebd6960f, 8562925 bytes. A separate board-side installation output and UI screenshot are REQUIRED before marking M5.3 runtime acceptance.
 - Restored .config to the pre-QuickStart M5.2 baseline and passed make defconfig; both CONFIG_PACKAGE_quickstart and CONFIG_PACKAGE_luci-app-quickstart are NOT selected in the persistent build config. Do not add either to Device/king3288 DEVICE_PACKAGES before live verification.
+
+## M5.3 finalization — verified on board (2026-10-14)
+- User installed the 53 prebuilt matching IPKs with install-safe.sh; backup created at /root/king3288-quickstart-backup-20261014-132429 on SD. Installer ended M5_QUICKSTART_INSTALL_OK, tested four original config files unchanged and showed default route via 192.168.50.3 dev br-lan, IP 192.168.50.202.
+- User manually copied staged quickstart.init to /etc/init.d/quickstart and started service. ps showed /usr/sbin/quickstart serve --unix /var/run/quickstart/local.sock; socket existed; 127.0.0.1:3038 listening. Immediately after service start, cmp of /etc/config/{network,dhcp,firewall,fstab} to backup returned OK for all four; default route still via 192.168.50.3.
+- User screenshots verify network wizard loads three options (broadband, existing router, side router) and QuickStart home shows network rates, online devices, IP/DNS and port state. User confirmed manually setting up bypass-router networking THROUGH the network wizard worked.
+- Latest screenshot labeled IPv4 network type as static network, LAN IP 192.168.50.202 and DNS 192.168.50.3. This is user-chosen config after running the wizard; DO NOT restore old DHCP client config automatically or compare network config to the now-outdated pre-wizard backup.
+- These results justify normal automatic startup of the main QuickStart procd service ONLY. No automatic startdhns/uciChange or iface/block hotplug scripts are reintroduced. A future full reboot, persistence and every QuickStart feature remain separately unverified.
+- Updated quickstart/Makefile to install existing proven quickstart.init into /etc/init.d/quickstart (START=92, procd); updated Device/king3288 DEVICE_PACKAGES to add luci-app-quickstart, which selects quickstart and runtime deps automatically.
+- Clean .config regenerated starting from king3288-configs/m3-firstboot.diffconfig: make defconfig selected CONFIG_PACKAGE_{luci-app-quickstart,quickstart,luci-i18n-quickstart-zh-cn,ip-full,smartmontools,shadow-utils}=y and left CONFIG_PACKAGE_{mdadm,kmod-md-mod} unselected.
+- Fresh full native build RC=0 (build_dir/king3288-m5-quickstart/m5-final-fullbuild.log), manifest 207 packages including iStore, LuCI, QuickStart and Chinese translation; rootfs tar.gz gzip -t OK. Rootfs has /etc/init.d/quickstart and /etc/rc.d/S92quickstart; there are no startdhns, iface/block auto triggers, or 09-quickstart UCI defaults. Build output is lab-ubuntu only, not flashed. U-Boot, eMMC, board kernel and DTS unchanged.
+- Runtime follow-up: enable /etc/init.d/quickstart on existing SD and verify network manually after the wizard. Do not run any scripts that enforce original DHCP-client proto; obey current user configuration. Defer reboot/stress to comprehensive final acceptance if user prefers.
