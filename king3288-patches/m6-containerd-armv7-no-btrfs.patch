@@ -1,0 +1,13 @@
+diff --git a/utils/containerd/Makefile b/utils/containerd/Makefile
+index 4e3dd6a..ff6795b 100644
+--- a/utils/containerd/Makefile
++++ b/utils/containerd/Makefile
+@@ -29,5 +29,7 @@ define Package/containerd
+   TITLE:=containerd container runtime
+   URL:=https://containerd.io/
+-  DEPENDS:=$(GO_ARCH_DEPENDS) +btrfs-progs +runc
++  # KING3288 uses ext4/overlayfs; do not pull optional Btrfs tools and kernel modules.
++  # Keep the upstream Btrfs dependency unchanged for all other targets.
++  DEPENDS:=$(GO_ARCH_DEPENDS) +runc +!TARGET_rockchip_armv7:btrfs-progs
+   MENU:=1
+ endef
