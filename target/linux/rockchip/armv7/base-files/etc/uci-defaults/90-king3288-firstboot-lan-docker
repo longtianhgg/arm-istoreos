@@ -1,0 +1,23 @@
+#!/bin/sh
+# KING3288 freshly flashed SD rootfs defaults only.
+# This uci-defaults script is removed after successful first boot; it never
+# resets the network after the user configures a static bypass-router address.
+
+# The board.d/99-default_network profile sets the LAN as a DHCP client.
+# Do not advertise DHCPv4, DHCPv6 or router advertisements on this LAN.
+[ "$(uci -q get dhcp.lan)" = 'dhcp' ] || exit 1
+uci -q set dhcp.lan.ignore='1' || exit 1
+uci -q set dhcp.lan.dhcpv6='disabled' || exit 1
+uci -q set dhcp.lan.ra='disabled' || exit 1
+uci -q set dhcp.lan.ndp='disabled' || exit 1
+uci -q commit dhcp || exit 1
+
+# iStoreOS sets a SquashFS overlay path by default. KING3288 boots from a
+# writable ext4 SD rootfs, so use a persistent ext4 directory instead.
+# Do not overwrite a user-specified Docker data-root.
+if [ "$(uci -q get dockerd.globals.data_root)" = '/overlay/upper/opt/docker' ]; then
+    uci -q set dockerd.globals.data_root='/opt/docker' || exit 1
+    uci -q commit dockerd || exit 1
+fi
+
+exit 0
