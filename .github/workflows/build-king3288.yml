@@ -81,7 +81,7 @@ jobs:
           cp king3288-configs/m3-feeds.lock feeds.conf
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          cp king3288-configs/m8-txpbl1-imagebuilder.diffconfig .config
+          cp king3288-configs/m8-final-full.config .config
           make defconfig
           grep -qx 'CONFIG_IB=y' .config
           grep -qx 'CONFIG_TARGET_rockchip_armv7_DEVICE_king3288=y' .config

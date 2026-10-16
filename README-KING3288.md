@@ -26,7 +26,7 @@ sudo apt install -y build-essential clang flex bison gawk gcc-multilib g++-multi
 cp king3288-configs/m3-feeds.lock feeds.conf
 ./scripts/feeds update -a
 ./scripts/feeds install -a
-cp king3288-configs/m8-txpbl1-imagebuilder.diffconfig .config
+cp king3288-configs/m8-final-full.config .config
 make defconfig
 make download -j4
 make -j4
@@ -50,3 +50,11 @@ bash king3288-tools/validate-king3288-sd-image-txpbl1-v3.sh
 单独 ImageBuilder 仓库：[king3288-imagebuilder](https://github.com/longtianhgg/king3288-imagebuilder)。
 
 仓库继承 iStoreOS/OpenWrt 和各第三方组件原许可证；不要加入私人配置、订阅、密钥、签名私钥。
+
+## 封版配置备份
+
+- `king3288-configs/m8-final-full.config`：2026-10-16 实机构建环境保留的完整 `.config`（SHA256: `36a2ca852e2b385e69ec370699e30dd12f6bb25139198485b7315d80efcfad44`）。
+- `king3288-configs/m8-txpbl1-imagebuilder.diffconfig`：精简配置（与现有 `.config` 在本机经 `scripts/diffconfig.sh` 比对一致）。
+- `king3288-configs/m3-feeds.lock`：固定 feeds Git 提交，`m3-third-submodules.lock`：第三方子模块提交。
+- 首次 GitHub Actions 曾完成整套源码编译，但生成的 manifest 比 296 包固定清单多 Btrfs 相关包，严格校验不通过；为减少上游默认包选择变化，后续使用完整配置。**完整配置的云端打包一致性尚待再次验证**。
+- `make clean` 不能删除全部 host/toolchain/历史临时构建目录；封版时仅在上述内容提交 Git 后清理生成缓存。
