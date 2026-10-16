@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline-only validation of the M8 v3 image, no /dev writes.
 set -euo pipefail
-ROOT=/home/dragon/king3288-build/king3288-istoreos
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 OUT=bin/targets/rockchip/armv7
 WORK=build_dir/king3288-m8-txpbl1
@@ -11,7 +11,6 @@ KDIR=build_dir/target-arm_cortex-a15+neon-vfpv4_musl_eabi/linux-rockchip_armv7
 DTB="$KDIR/linux-6.6.144/arch/arm/boot/dts/rockchip/rk3288-king3288.dtb"
 FAT_OFFSET=$((32768*512))
 EXT4="$ROOT/build_dir/king3288-m7-sd-image/root.ext4"
-REF=/home/dragon/king3288-build/images/king3288-ubuntu20.04.3-linux4.4.189-hid-hdmi-sd7g-idb-modulesfix-rootfix.img
 mkdir -p "$WORK/v3-verify"
 test -s "$RAW" && test -s "$GZ" && test -s "$EXT4" && test -s "$DTB"
 test "$(stat -c %s "$RAW")" = 3238002688

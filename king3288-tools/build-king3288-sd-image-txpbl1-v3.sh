@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Host-side file-only KING3288 full SD image builder. No sudo, no /dev writes.
 set -euo pipefail
-ROOT=/home/dragon/king3288-build/king3288-istoreos
-REF=/home/dragon/king3288-build/images/king3288-ubuntu20.04.3-linux4.4.189-hid-hdmi-sd7g-idb-modulesfix-rootfix.img
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IDB=king3288-blobs/king3288-idb-miniloader.bin
 cd "$ROOT"
 OUT=bin/targets/rockchip/armv7
 WORK=build_dir/king3288-m7-sd-image
@@ -15,6 +15,10 @@ STAGING="$WORK/staging"
 KDIR=build_dir/target-arm_cortex-a15+neon-vfpv4_musl_eabi/linux-rockchip_armv7
 KERNEL="$KDIR/zImage"
 DTB="$KDIR/linux-6.6.144/arch/arm/boot/dts/rockchip/rk3288-king3288.dtb"
+# A released standalone ImageBuilder stores the prebuilt DTB at this location.
+if [ ! -s "$DTB" ] && [ -s "$KDIR/image-rk3288-king3288.dtb" ]; then
+  DTB="$KDIR/image-rk3288-king3288.dtb"
+fi
 ROOT_TAR="$OUT/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
 EXPAND=king3288-tools/king3288-expand-rootfs.sh
 INIT=king3288-tools/king3288-rootfs-resize.init
@@ -26,7 +30,7 @@ P1_SECTORS=2097152
 P2_START=2129920
 P2_SECTORS=4194304
 TOTAL_SECTORS=$((P2_START + P2_SECTORS))
-for path in "$REF" "$KERNEL" "$DTB" "$ROOT_TAR" "$EXPAND" "$INIT" "$EMMC_PROTECT"; do test -s "$path" || { echo "MISSING: $path"; exit 1; }; done
+for path in "$IDB" "$KERNEL" "$DTB" "$ROOT_TAR" "$EXPAND" "$INIT" "$EMMC_PROTECT"; do test -s "$path" || { echo "MISSING: $path"; exit 1; }; done
 test "$(fdtget -t x "$DTB" /ethernet@ff290000 snps,txpbl)" = 1 || { echo "ERROR: compiled DTB is not TXPBL=1"; exit 1; }
 tar -tzf "$ROOT_TAR" > "$WORK/rootfs-files.txt"
 for f in \
@@ -40,10 +44,12 @@ for f in \
 done
 echo M8_SOURCE_ROOTFS_INTEGRATION_VERIFIED
 
-test "$(cat build_dir/king3288-m6-webplugins/fullbuild.rc)" = M6_WEB_PLUGINS_FULLBUILD_RC=0
+test "$(wc -l < king3288-configs/m8-txpbl1-imagebuilder-packages.txt)" -eq 296
+test -s "$OUT/istoreos-rockchip-armv7-king3288.manifest"
+diff -u <(awk '{print $1}' "$OUT/istoreos-rockchip-armv7-king3288.manifest" | sort) <(sort king3288-configs/m8-txpbl1-imagebuilder-packages.txt)
 sh -n "$EXPAND"; sh -n "$INIT"; sh -n "$EMMC_PROTECT"
-test "$(sfdisk -d "$REF" | sed -n 's/^label-id: //p')" = "$DISK_ID"
-test "$(dd if="$REF" bs=512 skip=64 count=206 status=none | sha256sum | awk '{print $1}')" = "$PREFIX_SHA"
+test "$(stat -c %s "$IDB")" = 105472
+test "$(sha256sum "$IDB" | awk '{print $1}')" = "$PREFIX_SHA"
 echo "M7_BUILD_READY source and IDB prefix verified"
 rm -f "$RAW" "$GZ" "$FAT" "$EXT4"
 rm -rf "$STAGING"
@@ -102,7 +108,7 @@ mdir -i "$FAT" ::/extlinux > "$WORK/fat-verify.txt"
 echo M7_FAT_BOOT_FILES_VERIFIED
 
 truncate -s "$((TOTAL_SECTORS * 512))" "$RAW"
-dd if="$REF" of="$RAW" bs=1M count=16 conv=notrunc status=none
+dd if="$IDB" of="$RAW" bs=512 seek=64 conv=notrunc status=none
 printf 'label: dos\nlabel-id: %s\nunit: sectors\nstart=%s,size=%s,type=c\nstart=%s,size=%s,type=83\n' "$DISK_ID" "$P1_START" "$P1_SECTORS" "$P2_START" "$P2_SECTORS" | sfdisk --no-reread --wipe never "$RAW" > "$WORK/sfdisk.log" 2>&1
 test "$(dd if="$RAW" bs=512 skip=64 count=206 status=none | sha256sum | awk '{print $1}')" = "$PREFIX_SHA"
 dd if="$FAT" of="$RAW" bs=1M seek=16 conv=notrunc status=none

@@ -2,7 +2,7 @@
 # KING3288 M8: reproduce the 296-package iStoreOS rootfs via native ImageBuilder.
 # File-only build; no /dev writes and no changes to the running board.
 set -euo pipefail
-ROOT=/home/dragon/king3288-build/king3288-istoreos
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IB_ARCHIVE="$ROOT/bin/targets/rockchip/armv7/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst"
 PKGLIST="$ROOT/king3288-configs/m8-txpbl1-imagebuilder-packages.txt"
 WORK="$ROOT/build_dir/king3288-m8-imagebuilder-repro"

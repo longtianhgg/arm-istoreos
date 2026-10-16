@@ -1,0 +1,150 @@
+name: Build KING3288 iStoreOS (free public runner)
+
+on:
+  push:
+    branches: [king3288]
+    paths:
+      - '.github/workflows/build-king3288.yml'
+      - 'king3288-configs/**'
+      - 'king3288-tools/**'
+      - 'king3288-blobs/**'
+      - 'target/linux/rockchip/**'
+      - 'package/custom/**'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish GitHub Release
+        type: boolean
+        default: false
+      retry_serial:
+        description: Retry with make -j1 V=s if parallel build fails
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: king3288-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Clean runner and install dependencies
+        run: |
+          set -eux
+          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/share/dotnet /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get clean
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang flex bison gawk gcc-multilib g++-multilib \
+            gettext git libncurses-dev libssl-dev libelf-dev python3 python3-dev \
+            python3-setuptools rsync subversion swig unzip zlib1g-dev \
+            file wget curl bc time xsltproc zstd ccache libfuse-dev \
+            libglib2.0-dev libpixman-1-dev device-tree-compiler \
+            fakeroot fdisk dosfstools mtools e2fsprogs pigz jq ca-certificates
+          df -h /
+          free -h
+
+      - name: Verify source and board data
+        run: |
+          set -eux
+          test -s king3288-blobs/king3288-idb-miniloader.bin
+          echo '84c08dd990738c1e935f86206a062aa75effc1148039328b5aa1722db818f8e3  king3288-blobs/king3288-idb-miniloader.bin' | sha256sum -c -
+          test "$(wc -l < king3288-configs/m8-txpbl1-imagebuilder-packages.txt)" -eq 296
+          grep -q 'snps,txpbl = <1>;' target/linux/rockchip/patches-6.6/140-arm-dts-rockchip-add-king3288.patch
+          bash -n king3288-tools/build-king3288-sd-image-txpbl1-v3.sh
+          bash -n king3288-tools/validate-king3288-sd-image-txpbl1-v3.sh
+
+      - name: Cache download archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            dl
+            !dl/go-mod-cache
+          key: king3288-dl-v1-${{ hashFiles('king3288-configs/m3-feeds.lock') }}
+          restore-keys: king3288-dl-v1-
+
+      - name: Prepare pinned feeds and M8 config
+        run: |
+          set -eux
+          cp king3288-configs/m3-feeds.lock feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          cp king3288-configs/m8-txpbl1-imagebuilder.diffconfig .config
+          make defconfig
+          grep -qx 'CONFIG_IB=y' .config
+          grep -qx 'CONFIG_TARGET_rockchip_armv7_DEVICE_king3288=y' .config
+          grep -qx 'CONFIG_PACKAGE_dnsmasq-full=y' .config
+
+      - name: Download build dependencies
+        run: |
+          make download -j4 || make download -j1 V=s
+          find dl -type f -size -1024c -print -delete || true
+          df -h /
+
+      - name: Compile full M8 source
+        shell: bash
+        run: |
+          set -uo pipefail
+          make -j4 > king3288-build.log 2>&1
+          rc=$?
+          if [ "$rc" -ne 0 ] && [ "${{ inputs.retry_serial }}" = "true" ]; then
+            make -j1 V=s >> king3288-build.log 2>&1
+            rc=$?
+          fi
+          tail -70 king3288-build.log
+          exit "$rc"
+
+      - name: Make and validate SD v3
+        run: |
+          set -e
+          bash king3288-tools/build-king3288-sd-image-txpbl1-v3.sh
+          bash king3288-tools/validate-king3288-sd-image-txpbl1-v3.sh
+          test -s bin/targets/rockchip/armv7/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          set -e
+          out=bin/targets/rockchip/armv7
+          mkdir -p release
+          cp "$out/istoreos-rockchip-armv7-king3288-sdcard-3g-txpbl1-v3.img.gz" release/
+          cp "$out/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst" release/
+          cp "$out/istoreos-rockchip-armv7-king3288.manifest" release/
+          (cd release && sha256sum *.gz *.tar.zst > SHA256SUMS)
+          echo "tag=king3288-$(date -u +%Y%m%d)-run$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          du -h release/*
+
+      - name: Upload artifacts for one day
+        uses: actions/upload-artifact@v4
+        with:
+          name: king3288-sd-v3-and-imagebuilder
+          path: release/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Publish Release (opt-in)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.assets.outputs.tag }}
+        run: |
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" \
+            --title "KING3288 iStoreOS $TAG" \
+            --notes "Linux 6.6.144 / RK3288 / TXPBL1. New SD v3 is offline-validated but not yet cold-boot-tested."
+
+      - name: Final disk report
+        if: always()
+        run: df -h /
