@@ -1,0 +1,31 @@
+name: KING3288 iStoreOS Cloud Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish built SD image and ImageBuilder as GitHub Release"
+        type: boolean
+        required: false
+        default: false
+      retry_serial:
+        description: "Retry compilation with make -j1 V=s on failure"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: king3288-cloud-build
+  cancel-in-progress: false
+
+jobs:
+  king3288:
+    name: KING3288 / Linux 6.6.144 / M8
+    uses: longtianhgg/arm-istoreos/.github/workflows/build-king3288.yml@king3288
+    with:
+      publish_release: ${{ inputs.publish_release }}
+      retry_serial: ${{ inputs.retry_serial }}
+    secrets: inherit
