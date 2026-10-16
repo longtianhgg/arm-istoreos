@@ -43,9 +43,18 @@ PKGS="-dnsmasq $(tr '\n' ' ' < "$PKGLIST")"
 (
   cd "$IB"
   make info > "$WORK/info.log" 2>&1
-  if ! make image PROFILE=king3288 PACKAGES="$PKGS" > "$WORK/image.log" 2>&1; then
-    tail -100 "$WORK/image.log" >&2
-    exit 1
+  if make image PROFILE=king3288 PACKAGES="$PKGS" > "$WORK/image.log" 2>&1; then
+    :
+  else
+    rc=$?
+    echo "M8_IMAGEBUILDER_FAILED_RC=$rc" >&2
+    echo '=== ImageBuilder error diagnostics ===' >&2
+    grep -nEi 'Collected errors|cannot satisfy|cannot find|unknown package|failed|error|opkg|dependency|not found|conflict|no space' "$WORK/image.log" | tail -160 >&2 || true
+    echo '=== First 90 lines of ImageBuilder output ===' >&2
+    head -90 "$WORK/image.log" >&2
+    echo '=== Last 160 lines of ImageBuilder output ===' >&2
+    tail -160 "$WORK/image.log" >&2
+    exit "$rc"
   fi
 )
 echo M8_IMAGEBUILDER_IMAGE_RC=0
