@@ -31,3 +31,12 @@
 ## 安全边界
 
 继续在 tmux `king3288-istoreos:0.0` 工作，保持 `:1.0` 不动；保留未跟踪 `Plan.md`、旧日志、`luci-app-netwizard/` 与 `luci-app-partexp/`，不进行 broad git add。禁止触碰原厂 U-Boot/Trust、eMMC、运行中的已扩容 SD。新增 v3 即使离线合格仍是**未进行新卡实机冷启动**。
+
+## M9：2026-10-16 GitHub 发布封版
+
+- 用户宣布 iStoreOS 适配工作结束，进入归档/发布/按需维护；不再修改已验证的硬件启动链、GMAC、Trust/U-Boot/eMMC。
+- iStoreOS 源码已发布至 https://github.com/longtianhgg/arm-istoreos/tree/king3288；Git HEAD 43370a8871fcd2beb77b410db122bde629ea6843（此前 M8 编译内核/用户空间 HEAD 420f023d1a；新提交仅增加源脚本移植、IDB 与 Actions，不是重新编译内核）。
+- 新公开 ImageBuilder 仓库：https://github.com/longtianhgg/king3288-imagebuilder，main=2acb3cc516dddd1edcd0149446a65850b1078272；包含 README、NOTICE、296 包清单、校验与 SD v3 封装工具。大型 ImageBuilder 二进制独立置于 Releases，不进入 Git 历史。
+- 构建机从 M8 Standalone ImageBuilder 解包后执行新仓库 ./build.sh，**无需重新编译内核**，重建 296 包 rootfs 和完整 SD v3，manifest 完全一致，e2fsck/MBR/IDB/FAT/DTB/ext4 校验全通过（RC=0）。该轮 standalone SD 镜像 SHA256 eb0576eaa4cb45f797090509711d221555a1107d2931db55e1479bfb4388b8f3；与早期源码构建 gzip SHA 不同，两个镜像都已通过离线验证但 M8 新卡冷启动仍未做。
+- `.github/workflows/build-king3288.yml`：公开仓库标准 ubuntu-24.04 GitHub Actions 免费运行器，push king3288 触发；限制 355min、默认只保留 1 天 artifact、发布 Release 要求显式触发；**首次云编译正在运行，结果尚未确认**。GitHub 标准 runner 14GB SSD，不能保证从零源码构建不会耗尽空间。
+- 新发布的 CI 必须以 Actions 真正成功和新产物校验为准，不能以本地 M8 已通过去替代云编译验收。尚未上传任何私人 SSH 密码、私钥、设备配置到新提交。
