@@ -1,4 +1,4 @@
-name: Build KING3288 iStoreOS (free public runner)
+name: Build KING3288 iStoreOS SD image (free public runner)
 
 on:
   push:
@@ -12,11 +12,6 @@ on:
       - 'package/custom/**'
   workflow_call:
     inputs:
-      publish_release:
-        description: Publish GitHub Release
-        required: false
-        type: boolean
-        default: false
       retry_serial:
         description: Retry with make -j1 V=s if parallel build fails
         required: false
@@ -24,10 +19,6 @@ on:
         default: false
   workflow_dispatch:
     inputs:
-      publish_release:
-        description: Publish GitHub Release
-        type: boolean
-        default: false
       retry_serial:
         description: Retry with make -j1 V=s if parallel build fails
         type: boolean
@@ -138,31 +129,28 @@ jobs:
           set -e
           bash king3288-tools/build-king3288-sd-image-txpbl1-v3.sh
           bash king3288-tools/validate-king3288-sd-image-txpbl1-v3.sh
-          test -s bin/targets/rockchip/armv7/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst
 
-      - name: Prepare release assets
+      - name: Prepare compressed SD image for Release
         id: assets
         run: |
-          set -e
+          set -euo pipefail
           out=bin/targets/rockchip/armv7
           mkdir -p release
           cp "$out/istoreos-rockchip-armv7-king3288-sdcard-3g-txpbl1-v3.img.gz" release/
-          cp "$out/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst" release/
-          cp "$out/istoreos-rockchip-armv7-king3288.manifest" release/
-          (cd release && sha256sum *.gz *.tar.zst > SHA256SUMS)
+          (cd release && sha256sum *.img.gz > SHA256SUMS && sha256sum -c SHA256SUMS)
           echo "tag=king3288-$(date -u +%Y%m%d)-run$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           du -h release/*
 
-      - name: Upload artifacts for one day
+      - name: Upload compressed SD image artifact for one day
         uses: actions/upload-artifact@v4
         with:
-          name: king3288-sd-v3-and-imagebuilder
+          name: king3288-sd-v3-image-only
           path: release/
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
 
-      - name: Publish verified compressed image and ImageBuilder to Releases
+      - name: Publish verified compressed SD image to GitHub Releases
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
