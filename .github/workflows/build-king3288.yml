@@ -141,6 +141,26 @@ jobs:
           echo "tag=king3288-$(date -u +%Y%m%d)-run$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           du -h release/*
 
+      - name: Stage ImageBuilder for the separate repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=bin/targets/rockchip/armv7
+          file="$out/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64.tar.zst"
+          test -s "$file"
+          mkdir -p imagebuilder-release
+          cp "$file" imagebuilder-release/
+          (cd imagebuilder-release && sha256sum *.tar.zst > SHA256SUMS && sha256sum -c SHA256SUMS)
+
+      - name: Preserve ImageBuilder for cross-repository publishing
+        uses: actions/upload-artifact@v4
+        with:
+          name: king3288-imagebuilder-transfer
+          path: imagebuilder-release/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
+
       - name: Upload compressed SD image artifact for one day
         uses: actions/upload-artifact@v4
         with:
@@ -159,6 +179,30 @@ jobs:
           gh release create "$TAG" release/* --target "$GITHUB_SHA" \
             --title "KING3288 iStoreOS $TAG" \
             --notes "Linux 6.6.144 / RK3288 / TXPBL1. New SD v3 is offline-validated but not yet cold-boot-tested."
+
+      - name: Publish ImageBuilder to king3288-imagebuilder Releases
+        if: success()
+        env:
+          IB_REPO_TOKEN: ${{ secrets.KING3288_IMAGEBUILDER_TOKEN }}
+          TAG: ${{ steps.assets.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$IB_REPO_TOKEN" ]; then
+            echo "::warning::Set KING3288_IMAGEBUILDER_TOKEN (fine-grained PAT, king3288-imagebuilder Contents write) in arm-istoreos Actions secrets to enable cross-repository publishing."
+            echo 'ImageBuilder was preserved as a short-lived Actions artifact but not published to the separate repository.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          export GH_TOKEN="$IB_REPO_TOKEN"
+          if gh release view "$TAG" -R longtianhgg/king3288-imagebuilder >/dev/null 2>&1; then
+            gh release upload "$TAG" imagebuilder-release/* --clobber -R longtianhgg/king3288-imagebuilder
+          else
+            gh release create "$TAG" imagebuilder-release/* \
+              -R longtianhgg/king3288-imagebuilder \
+              --target main \
+              --title "KING3288 iStoreOS ImageBuilder $TAG" \
+              --notes "Standalone ImageBuilder generated from arm-istoreos king3288 source commit $GITHUB_SHA. SD firmware image is published in arm-istoreos Releases."
+          fi
 
       - name: Final disk report
         if: always()
