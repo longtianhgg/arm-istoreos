@@ -162,13 +162,13 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
-      - name: Publish Release (opt-in)
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+      - name: Publish verified compressed image and ImageBuilder to Releases
+        if: success()
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.assets.outputs.tag }}
         run: |
-          gh release create "$TAG" release/* --target king3288 \
+          gh release create "$TAG" release/* --target "$GITHUB_SHA" \
             --title "KING3288 iStoreOS $TAG" \
             --notes "Linux 6.6.144 / RK3288 / TXPBL1. New SD v3 is offline-validated but not yet cold-boot-tested."
 
