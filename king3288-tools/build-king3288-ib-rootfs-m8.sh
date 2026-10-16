@@ -12,11 +12,34 @@ mkdir -p "$WORK"
 tar --use-compress-program=zstd -xf "$IB_ARCHIVE" -C "$WORK"
 IB="$WORK/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64"
 test -f "$IB/Makefile"
-# The stock ImageBuilder default pulls dnsmasq, while this proven M6 rootfs uses dnsmasq-full.
-# Explicitly exclude the optional Btrfs toolchain that the cloud build unexpectedly
-# pulls in through imagebuilder/opkg defaults. The frozen M8 manifest has none of
-# these packages; kernel and board settings remain unchanged.
-PKGS="-dnsmasq -btrfs-progs -kmod-fs-btrfs $(tr '\n' ' ' < "$PKGLIST")"
+# Freeze ImageBuilder's *available* IPK pool to the 296 tested M8 packages.
+# The cloud full build may also produce optional packages such as btrfs-progs,
+# which opkg installs automatically even when "-btrfs-progs" is passed.
+# Prune ONLY the unpacked temporary ImageBuilder, never the original archive.
+shopt -s nullglob
+ipks=( "$IB"/packages/*.ipk )
+test "${#ipks[@]}" -ge 296 || { echo "ERROR: ImageBuilder package pool too small"; exit 1; }
+for ipk in "${ipks[@]}"; do
+  name="${ipk##*/}"
+  name="${name%%_*}"
+  if ! grep -Fxq "$name" "$PKGLIST"; then
+    echo "M8_FILTER_OPTIONAL_IPK $name"
+    rm -f -- "$ipk"
+  fi
+done
+missing=0
+while IFS= read -r name; do
+  found=( "$IB/packages/${name}_"*.ipk )
+  if [ "${#found[@]}" -eq 0 ]; then
+    echo "ERROR: missing pinned IPK: $name" >&2
+    missing=1
+  fi
+done < "$PKGLIST"
+test "$missing" -eq 0
+echo M8_IMAGEBUILDER_PACKAGE_POOL_PINNED_296
+
+# The stock ImageBuilder default pulls dnsmasq, while M8 uses dnsmasq-full.
+PKGS="-dnsmasq $(tr '\n' ' ' < "$PKGLIST")"
 (
   cd "$IB"
   make info > "$WORK/info.log" 2>&1
