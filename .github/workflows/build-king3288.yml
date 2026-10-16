@@ -10,6 +10,18 @@ on:
       - 'king3288-blobs/**'
       - 'target/linux/rockchip/**'
       - 'package/custom/**'
+  workflow_call:
+    inputs:
+      publish_release:
+        description: Publish GitHub Release
+        required: false
+        type: boolean
+        default: false
+      retry_serial:
+        description: Retry with make -j1 V=s if parallel build fails
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       publish_release:
@@ -39,6 +51,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          ref: king3288
 
       - name: Clean runner and install dependencies
         run: |
@@ -106,6 +119,20 @@ jobs:
           tail -70 king3288-build.log
           exit "$rc"
 
+      - name: Reproduce exact 296-package rootfs using compiled ImageBuilder
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash king3288-tools/build-king3288-ib-rootfs-m8.sh
+          out=bin/targets/rockchip/armv7
+          ibout=build_dir/king3288-m8-imagebuilder-repro/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64/bin/targets/rockchip/armv7
+          test -s "$ibout/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
+          test -s "$ibout/istoreos-rockchip-armv7-king3288.manifest"
+          diff -u <(sort king3288-configs/m8-txpbl1-imagebuilder-packages.txt) <(awk '{print $1}' "$ibout/istoreos-rockchip-armv7-king3288.manifest" | sort)
+          cp "$ibout/istoreos-rockchip-armv7-king3288-rootfs.tar.gz" "$out/"
+          cp "$ibout/istoreos-rockchip-armv7-king3288.manifest" "$out/"
+          echo 'M8_PINNED_ROOTFS_296_OK'
+
       - name: Make and validate SD v3
         run: |
           set -e
@@ -141,7 +168,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.assets.outputs.tag }}
         run: |
-          gh release create "$TAG" release/* --target "$GITHUB_SHA" \
+          gh release create "$TAG" release/* --target king3288 \
             --title "KING3288 iStoreOS $TAG" \
             --notes "Linux 6.6.144 / RK3288 / TXPBL1. New SD v3 is offline-validated but not yet cold-boot-tested."
 
