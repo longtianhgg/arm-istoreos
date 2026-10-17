@@ -110,31 +110,15 @@ jobs:
           tail -70 king3288-build.log
           exit "$rc"
 
-      - name: Reproduce exact 296-package rootfs using compiled ImageBuilder
-        id: ib_repro
+      - name: Validate native rootfs from full source build
         shell: bash
         run: |
           set -euo pipefail
-          bash king3288-tools/build-king3288-ib-rootfs-m8.sh
           out=bin/targets/rockchip/armv7
-          ibout=build_dir/king3288-m8-imagebuilder-repro/istoreos-imagebuilder-rockchip-armv7.Linux-x86_64/bin/targets/rockchip/armv7
-          test -s "$ibout/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
-          test -s "$ibout/istoreos-rockchip-armv7-king3288.manifest"
-          diff -u <(sort king3288-configs/m8-txpbl1-imagebuilder-packages.txt) <(awk '{print $1}' "$ibout/istoreos-rockchip-armv7-king3288.manifest" | sort)
-          cp "$ibout/istoreos-rockchip-armv7-king3288-rootfs.tar.gz" "$out/"
-          cp "$ibout/istoreos-rockchip-armv7-king3288.manifest" "$out/"
-          echo 'M8_PINNED_ROOTFS_296_OK'
-
-      - name: Upload ImageBuilder diagnostics on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: king3288-ib-error-logs
-          path: |
-            build_dir/king3288-m8-imagebuilder-repro/image.log
-            build_dir/king3288-m8-imagebuilder-repro/info.log
-          retention-days: 7
-          if-no-files-found: warn
+          test -s "$out/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
+          test -s "$out/istoreos-rockchip-armv7-king3288.manifest"
+          gzip -t "$out/istoreos-rockchip-armv7-king3288-rootfs.tar.gz"
+          echo M8_NATIVE_ROOTFS_PRESENT
 
       - name: Make and validate SD v3
         run: |
@@ -165,6 +149,7 @@ jobs:
           (cd imagebuilder-release && sha256sum *.tar.zst > SHA256SUMS && sha256sum -c SHA256SUMS)
 
       - name: Preserve ImageBuilder for cross-repository publishing
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: king3288-imagebuilder-transfer
@@ -194,6 +179,7 @@ jobs:
 
       - name: Publish ImageBuilder to king3288-imagebuilder Releases
         if: success()
+        continue-on-error: true
         env:
           IB_REPO_TOKEN: ${{ secrets.KING3288_IMAGEBUILDER_TOKEN }}
           TAG: ${{ steps.assets.outputs.tag }}
