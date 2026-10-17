@@ -44,9 +44,49 @@ for f in \
 done
 echo M8_SOURCE_ROOTFS_INTEGRATION_VERIFIED
 
-test "$(wc -l < king3288-configs/m8-txpbl1-imagebuilder-packages.txt)" -eq 296
-test -s "$OUT/istoreos-rockchip-armv7-king3288.manifest"
-diff -u <(awk '{print $1}' "$OUT/istoreos-rockchip-armv7-king3288.manifest" | sort) <(sort king3288-configs/m8-txpbl1-imagebuilder-packages.txt)
+# Native rootfs may legitimately include transitive dependencies (containerd -> Btrfs).
+# Keep the 296 proven packages, reject unexpected extras; do not alter the rootfs.
+PKGLIST=king3288-configs/m8-txpbl1-imagebuilder-packages.txt
+MANIFEST="$OUT/istoreos-rockchip-armv7-king3288.manifest"
+test "$(wc -l < "$PKGLIST")" -eq 296
+test -s "$MANIFEST"
+LC_ALL=C sort -u "$PKGLIST" > "$WORK/expected-packages.sorted"
+awk 'NF { print $1 }' "$MANIFEST" | LC_ALL=C sort -u > "$WORK/native-packages.sorted"
+comm -23 "$WORK/expected-packages.sorted" "$WORK/native-packages.sorted" > "$WORK/missing-packages.txt"
+if [ -s "$WORK/missing-packages.txt" ]; then
+  echo 'ERROR: native rootfs is missing required M8 packages:' >&2
+  cat "$WORK/missing-packages.txt" >&2
+  exit 1
+fi
+comm -13 "$WORK/expected-packages.sorted" "$WORK/native-packages.sorted" > "$WORK/extra-packages.txt"
+# All names here were observed as the Btrfs dependency closure in cloud builds.
+cat > "$WORK/allowed-btrfs-extras.txt" <<'EOF'
+btrfs-progs
+kmod-crypto-acompress
+kmod-crypto-blake2b
+kmod-crypto-xxhash
+kmod-fs-btrfs
+kmod-lib-lzo
+kmod-lib-raid6
+kmod-lib-xor
+kmod-lib-xxhash
+kmod-lib-zlib-deflate
+kmod-lib-zlib-inflate
+kmod-lib-zstd
+liblzo2
+EOF
+comm -23 "$WORK/extra-packages.txt" "$WORK/allowed-btrfs-extras.txt" > "$WORK/unexpected-packages.txt"
+if [ -s "$WORK/unexpected-packages.txt" ]; then
+  echo 'ERROR: unreviewed extra native rootfs packages:' >&2
+  cat "$WORK/unexpected-packages.txt" >&2
+  exit 1
+fi
+if grep -Fxq dnsmasq "$WORK/native-packages.sorted" || ! grep -Fxq dnsmasq-full "$WORK/native-packages.sorted"; then
+  echo 'ERROR: expected dnsmasq-full and no dnsmasq' >&2
+  exit 1
+fi
+echo "M8_NATIVE_ROOTFS_PACKAGE_SET_OK: $(wc -l < "$WORK/native-packages.sorted") packages"
+cat "$WORK/extra-packages.txt"
 sh -n "$EXPAND"; sh -n "$INIT"; sh -n "$EMMC_PROTECT"
 test "$(stat -c %s "$IDB")" = 105472
 test "$(sha256sum "$IDB" | awk '{print $1}')" = "$PREFIX_SHA"
