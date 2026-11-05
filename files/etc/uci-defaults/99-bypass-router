@@ -5,8 +5,10 @@
 
 [ -e /etc/config/network ] || touch /etc/config/network
 
+lan_dev="$(uci -q get network.lan.device)"
+[ -z "$lan_dev" ] && lan_dev="br-lan"
 uci -q set network.lan='interface'
-uci -q set network.lan.device='eth0'
+uci -q set network.lan.device="$lan_dev"
 uci -q set network.lan.proto='dhcp'
 
 uci -q delete network.lan.ipaddr
