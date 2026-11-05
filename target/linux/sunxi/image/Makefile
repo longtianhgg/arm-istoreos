@@ -9,7 +9,7 @@ include $(INCLUDE_DIR)/image.mk
 FAT32_BLOCK_SIZE=1024
 FAT32_BLOCKS=$(shell echo $$(($(CONFIG_SUNXI_SD_BOOT_PARTSIZE)*1024*1024/$(FAT32_BLOCK_SIZE))))
 
-DEVICE_VARS := SUNXI_DTS SUNXI_DTS_DIR
+DEVICE_VARS := SUNXI_DTS SUNXI_DTS_DIR SUNXI_OVERLAY_PARTSIZE
 
 define Build/sunxi-sdcard
 	rm -f $@.boot
@@ -22,7 +22,8 @@ define Build/sunxi-sdcard
 		$(IMAGE_ROOTFS) \
 		$(CONFIG_SUNXI_SD_BOOT_PARTSIZE) \
 		$(CONFIG_TARGET_ROOTFS_PARTSIZE) \
-		$(STAGING_DIR_IMAGE)/$(DEVICE_NAME)-u-boot-with-spl.bin
+		$(STAGING_DIR_IMAGE)/$(DEVICE_NAME)-u-boot-with-spl.bin \
+		$(SUNXI_OVERLAY_PARTSIZE)
 	rm -f $@.boot
 endef
 

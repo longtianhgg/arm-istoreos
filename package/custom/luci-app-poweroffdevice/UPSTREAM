@@ -1,0 +1,5 @@
+Upstream: https://github.com/sirpdboy/luci-app-poweroffdevice
+Tag: v2.7
+Commit: 8f53359c3234c7c398b846b5425f9b0b017c03ec
+Imported: 2026-09-30
+Purpose: LuCI power-off page for Orange Pi Zero 3 iStoreOS.

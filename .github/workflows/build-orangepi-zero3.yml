@@ -1,0 +1,336 @@
+name: Build & Release Orange Pi Zero 3 iStoreOS 25.12
+
+on:
+  workflow_dispatch:
+    inputs:
+      verbose_retry:
+        description: "并行编译失败后使用 make -j1 V=s 重试"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: orangepi-zero3-2512opencode-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Orange Pi Zero 3 firmware (25.12)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: UTC
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Show runner resources
+        run: |
+          echo "=== CPU ==="
+          nproc
+
+          echo "=== Memory ==="
+          free -h
+
+          echo "=== Disk ==="
+          df -h
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/hostedtoolcache/CodeQL || true
+          sudo apt-get clean
+
+          echo "=== Disk after cleanup ==="
+          df -h
+
+          echo "=== Existing swap ==="
+          swapon --show || true
+          free -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            g++ \
+            gawk \
+            gcc-multilib \
+            g++-multilib \
+            gettext \
+            git \
+            libncurses-dev \
+            libssl-dev \
+            libelf-dev \
+            python3 \
+            python3-dev \
+            python3-setuptools \
+            python3-pyelftools \
+            rsync \
+            subversion \
+            swig \
+            unzip \
+            zlib1g-dev \
+            file \
+            wget \
+            curl \
+            bc \
+            time \
+            xsltproc \
+            zstd \
+            ccache \
+            libfuse-dev \
+            libglib2.0-dev \
+            libpixman-1-dev \
+            device-tree-compiler \
+            u-boot-tools
+
+      - name: Cache downloaded source archives
+        uses: actions/cache@v4
+        with:
+          path: |
+            dl
+            !dl/go-mod-cache
+          key: openwrt-dl-2512-${{ runner.os }}-${{ hashFiles('feeds.conf', 'feeds.conf.default') }}
+          restore-keys: |
+            openwrt-dl-2512-${{ runner.os }}-
+
+      - name: Reset Go module cache
+        run: |
+          rm -rf dl/go-mod-cache
+
+      - name: Update and install feeds
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Load Orange Pi Zero 3 build config
+        run: |
+          cp configs/orangepi-zero3-2512opencode.config .config
+
+          make defconfig
+
+          echo "=== Target ==="
+          grep -E '^CONFIG_TARGET_sunxi|^CONFIG_TARGET_PROFILE' .config || true
+
+          echo "=== RootFS ==="
+          grep -E '^CONFIG_TARGET_ROOTFS|^# CONFIG_TARGET_ROOTFS' .config || true
+
+          echo "=== Important packages ==="
+          grep -E '^CONFIG_PACKAGE_(docker|dockerd|docker-compose|luci-app-dockerman|luci-app-partexp|luci-app-netwizard|luci-app-quickstart|luci-app-poweroffdevice|luci-app-ttyd)=' .config || true
+
+      - name: Verify Orange Pi Zero 3 permanent fixes
+        run: |
+          echo "=== Verify YT8531C patch ==="
+
+          test -f \
+            target/linux/sunxi/patches-6.12/103-orangepi-zero3-yt8531-phy-stability.patch
+
+          grep -q 'motorcomm,auto-sleep-disabled' \
+            target/linux/sunxi/patches-6.12/103-orangepi-zero3-yt8531-phy-stability.patch
+
+          grep -q 'motorcomm,keep-pll-enabled' \
+            target/linux/sunxi/patches-6.12/103-orangepi-zero3-yt8531-phy-stability.patch
+
+          echo "=== Verify SPI0 disabled patch ==="
+
+          test -f \
+            target/linux/sunxi/patches-6.12/104-orangepi-zero3-disable-spi0.patch
+
+          grep -q 'status = "disabled"' \
+            target/linux/sunxi/patches-6.12/104-orangepi-zero3-disable-spi0.patch
+
+          echo "=== Verify bypass-router defaults ==="
+
+          test -x files/etc/uci-defaults/99-bypass-router
+
+          grep -q "network.lan.device='eth0'" \
+            files/etc/uci-defaults/99-bypass-router
+
+          grep -q "network.lan.proto='dhcp'" \
+            files/etc/uci-defaults/99-bypass-router
+
+      - name: Download sources
+        shell: bash
+        run: |
+          set +e
+
+          make download -j4
+          rc=$?
+
+          set -e
+
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning::Parallel download failed, retrying serially"
+            make download -j1 V=s
+          fi
+
+          # 删除异常的小下载文件，让 make 后续能够重新获取
+          find dl -type f -size -1024c -print -delete || true
+
+      - name: Build firmware
+        shell: bash
+        run: |
+          set +e
+
+          make -j$(nproc)
+          rc=$?
+
+          set -e
+
+          if [ "$rc" -ne 0 ]; then
+            if [ "${{ inputs.verbose_retry }}" = "true" ]; then
+              echo "::warning::Parallel build failed, retrying with make -j1 V=s"
+              make -j1 V=s
+            else
+              exit "$rc"
+            fi
+          fi
+
+      - name: Verify firmware output
+        run: |
+          OUT="bin/targets/sunxi/cortexa53"
+
+          echo "=== Firmware output ==="
+          find "$OUT" \
+            -maxdepth 1 \
+            -type f \
+            -printf '%f  %k KiB\n' \
+            | sort
+
+          echo "=== Looking for Orange Pi Zero 3 image ==="
+
+          IMAGE_FILE="$(find "$OUT" -maxdepth 1 -type f -name '*orangepi-zero3*sdcard.img.gz' | head -n 1)"
+
+          if [ -z "$IMAGE_FILE" ] || [ ! -f "$IMAGE_FILE" ]; then
+            echo "::error::Orange Pi Zero 3 sdcard image was not generated"
+            exit 1
+          fi
+
+          echo "Found image: $IMAGE_FILE"
+
+      - name: Prepare Release files
+        id: release_info
+        shell: bash
+        run: |
+          OUT="bin/targets/sunxi/cortexa53"
+
+          mkdir -p release
+
+          # 只复制 target 目录顶层的最终固件及构建信息，
+          # 不复制 packages/ 等大目录。
+          find "$OUT" \
+            -maxdepth 1 \
+            -type f \
+            -exec cp -av {} release/ \;
+
+          DATE="$(date -u +'%Y%m%d')"
+          TAG="orangepi-zero3-25.12-${DATE}-r${GITHUB_RUN_NUMBER}"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Orange Pi Zero 3 iStoreOS 25.12 cloud build"
+            echo
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Branch: $GITHUB_REF_NAME"
+            echo "Commit: $GITHUB_SHA"
+            echo "Workflow run: $GITHUB_RUN_NUMBER"
+            echo "Build time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo
+            echo "Target: sunxi/cortexa53"
+            echo "Device: Xunlong Orange Pi Zero 3"
+            echo "Kernel: Linux 6.12"
+            echo "Package manager: apk"
+            echo
+            echo "Included project fixes:"
+            echo "- Three-partition SquashFS + ext4 Overlay image layout"
+            echo "- FIT kernel+DTB bootchain (lzma)"
+            echo "- Motorcomm YT8531C PHY stability patch"
+            echo "- Onboard SPI0 disabled"
+            echo "- Single-port bypass-router defaults"
+            echo "- Docker / Dockerman"
+            echo "- QuickStart & NetWizard & PartExp & PowerOff"
+          } > release/GITHUB_BUILD_INFO.txt
+
+          cat > RELEASE_NOTES.md <<EOF
+          ## Orange Pi Zero 3 iStoreOS 25.12
+
+          Automated firmware build from branch \`$GITHUB_REF_NAME\`.
+
+          **Commit**
+
+          \`$GITHUB_SHA\`
+
+          **Target**
+
+          - SoC: Allwinner H618
+          - OpenWrt target: \`sunxi/cortexa53\`
+          - Device: Orange Pi Zero 3
+          - Kernel: Linux 6.12
+          - Package manager: apk
+          - RootFS: SquashFS
+          - Writable Overlay: separate ext4 partition
+
+          **Orange Pi Zero 3 fixes included**
+
+          - FIT kernel+DTB bootchain (lzma compressed)
+          - YT8531C Gigabit Ethernet stability settings
+          - SPI0 disabled to avoid sun6i SPI panic
+          - Three-partition SD-card image (boot / rootfs / 2GB ext4 overlay)
+          - Single-port bypass-router defaults (eth0 DHCP client, DHCP server disabled)
+          - Docker / Dockerman
+          - QuickStart / NetWizard / PartExp / PowerOff
+
+          This release was built automatically by GitHub Actions.
+          EOF
+
+          echo "=== Release files ==="
+          ls -lh release/
+
+      - name: Create GitHub Release
+        if: github.ref_name == 'orangepi-zero3-2512opencode'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release_info.outputs.tag }}
+        run: |
+          echo "Creating release: $TAG"
+
+          gh release create "$TAG" \
+            release/* \
+            --target "$GITHUB_SHA" \
+            --title "Orange Pi Zero 3 iStoreOS 25.12 ${TAG}" \
+            --notes-file RELEASE_NOTES.md
+
+      - name: Final summary
+        if: success()
+        env:
+          TAG: ${{ steps.release_info.outputs.tag }}
+        run: |
+          echo "### Orange Pi Zero 3 25.12 build completed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release tag: \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Firmware has been published to GitHub Releases." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show disk usage
+        if: always()
+        run: |
+          echo "=== Final disk usage ==="
+          df -h
