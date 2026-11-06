@@ -13,7 +13,8 @@
 /logs
 /feeds
 /feeds.conf
-/files
+/files/*
+!/files/etc/
 /target/linux/feeds
 /overlay
 /package/feeds

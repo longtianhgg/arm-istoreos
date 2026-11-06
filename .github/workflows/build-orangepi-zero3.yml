@@ -97,6 +97,7 @@ jobs:
             libglib2.0-dev \
             libpixman-1-dev \
             device-tree-compiler \
+            dwarves \
             u-boot-tools
 
       - name: Cache downloaded source archives
@@ -133,6 +134,9 @@ jobs:
           echo "=== Important packages ==="
           grep -E '^CONFIG_PACKAGE_(docker|dockerd|docker-compose|luci-app-dockerman|luci-app-partexp|luci-app-netwizard|luci-app-quickstart|luci-app-poweroffdevice|luci-app-ttyd)=' .config || true
 
+          echo "=== BTF & honk packages ==="
+          grep -E '^CONFIG_KERNEL_DEBUG_INFO_BTF|^CONFIG_PACKAGE_(kmod-sched-core|kmod-sched-bpf|kmod-veth|kmod-nft-queue|kmod-nfnetlink-queue|v2ray-geoip|v2ray-geosite)=' .config || true
+
       - name: Verify Orange Pi Zero 3 permanent fixes
         run: |
           echo "=== Verify YT8531C patch ==="
@@ -158,11 +162,18 @@ jobs:
 
           test -x files/etc/uci-defaults/99-bypass-router
 
-          grep -q "network.lan.device='eth0'" \
-            files/etc/uci-defaults/99-bypass-router
-
           grep -q "network.lan.proto='dhcp'" \
             files/etc/uci-defaults/99-bypass-router
+
+          echo "=== Verify single-arm bypass-router sysctl for honk ==="
+
+          test -f files/etc/sysctl.d/60-honk-single-arm.conf
+
+          grep -q "net.ipv4.conf.all.send_redirects = 0" \
+            files/etc/sysctl.d/60-honk-single-arm.conf
+
+          grep -q "net.ipv4.conf.all.rp_filter = 0" \
+            files/etc/sysctl.d/60-honk-single-arm.conf
 
       - name: Download sources
         shell: bash
@@ -254,7 +265,7 @@ jobs:
             echo
             echo "Target: sunxi/cortexa53"
             echo "Device: Xunlong Orange Pi Zero 3"
-            echo "Kernel: Linux 6.12"
+            echo "Kernel: Linux 6.12 (with built-in BTF & NETKIT)"
             echo "Package manager: apk"
             echo
             echo "Included project fixes:"
@@ -262,7 +273,9 @@ jobs:
             echo "- FIT kernel+DTB bootchain (lzma)"
             echo "- Motorcomm YT8531C PHY stability patch"
             echo "- Onboard SPI0 disabled"
-            echo "- Single-port bypass-router defaults"
+            echo "- Single-port bypass-router defaults & honk sysctl optimization"
+            echo "- Kernel built-in BTF (/sys/kernel/btf/vmlinux) for honk / dae"
+            echo "- Pre-installed kmods for honk (sched-core, sched-bpf, veth, nft-queue, etc.)"
             echo "- Docker / Dockerman"
             echo "- QuickStart & NetWizard & PartExp & PowerOff"
           } > release/GITHUB_BUILD_INFO.txt
@@ -281,18 +294,21 @@ jobs:
           - SoC: Allwinner H618
           - OpenWrt target: \`sunxi/cortexa53\`
           - Device: Orange Pi Zero 3
-          - Kernel: Linux 6.12
+          - Kernel: Linux 6.12 (built-in BTF enabled)
           - Package manager: apk
           - RootFS: SquashFS
           - Writable Overlay: separate ext4 partition
 
-          **Orange Pi Zero 3 fixes included**
+          **Orange Pi Zero 3 & honk features included**
 
           - FIT kernel+DTB bootchain (lzma compressed)
           - YT8531C Gigabit Ethernet stability settings
           - SPI0 disabled to avoid sun6i SPI panic
           - Three-partition SD-card image (boot / rootfs / 2GB ext4 overlay)
-          - Single-port bypass-router defaults (eth0 DHCP client, DHCP server disabled)
+          - Single-port bypass-router defaults (br-lan DHCP client, DHCP server disabled)
+          - Single-arm gateway kernel optimizations (disabled ICMP redirects and rp_filter for honk/dae)
+          - Kernel built-in BTF (/sys/kernel/btf/vmlinux) & NETKIT enabled
+          - honk / dae ready: all required kmods (kmod-sched-bpf, kmod-nft-queue, kmod-veth) & geo assets pre-built
           - Docker / Dockerman
           - QuickStart / NetWizard / PartExp / PowerOff
 
