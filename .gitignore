@@ -15,6 +15,8 @@
 /feeds.conf
 /files/*
 !/files/etc/
+!/files/usr/
+!/files/www/
 /target/linux/feeds
 /overlay
 /package/feeds
