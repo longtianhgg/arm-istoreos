@@ -111,7 +111,7 @@ make -j$(nproc)
    cd istoreos-imagebuilder-sunxi-cortexa53.Linux-x86_64
    touch repositories
    ```
-2. 下载额外插件（Tailscale 与 honk 全家桶）并签名：
+2. 下载额外插件（Tailscale 与 honk 全家桶）并建立索引：
    ```bash
    cd packages
    wget -nc https://downloads.openwrt.org/releases/25.12.6/packages/aarch64_cortex-a53/packages/tailscale-1.104.1-r1.apk
@@ -120,9 +120,9 @@ make -j$(nproc)
      FILE=$(curl -sL "$BASE_URL/" | grep -oE "${pkg}-[0-9][^\"]*\\.apk" | head -n1)
      [ -n "$FILE" ] && wget -nc "$BASE_URL/$FILE"
    done
-   ../staging_dir/host/bin/apk mkndx --allow-untrusted --output packages.adb *.apk
-   ../staging_dir/host/bin/apk --allow-untrusted adbsign --sign-key ../keys/local-private-key.pem packages.adb
    cd ..
+   make _check_keys
+   make package_index
    ```
 3. 一键极速打包：
    ```bash

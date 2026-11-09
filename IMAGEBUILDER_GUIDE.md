@@ -86,14 +86,12 @@ for pkg in honk luci-app-honk luci-lib-daeuniverse luci-i18n-daeuniverse-zh-cn v
   fi
 done
 
-# 4. 生成本地 apk 包索引
-../staging_dir/host/bin/apk mkndx --allow-untrusted --output packages.adb *.apk
-
-# 5. 使用本地 ImageBuilder 私钥对索引签名
-../staging_dir/host/bin/apk --allow-untrusted adbsign --sign-key ../keys/local-private-key.pem packages.adb
-
-# 6. 返回 ImageBuilder 根目录
+# 4. 返回 ImageBuilder 根目录
 cd ..
+
+# 5. 生成本地签名密钥并更新包索引（由 ImageBuilder 原生驱动，自动完成签名）
+make _check_keys
+make package_index
 ```
 
 ---
@@ -141,11 +139,14 @@ bin/targets/sunxi/cortexa53/istoreos-25.12.6-sunxi-cortexa53-xunlong_orangepi-ze
 
 ## 六、 常见问题与避坑指南 (FAQ)
 
-### Q1: 运行 `../staging_dir/host/bin/apk` 提示 `No such file or directory`？
-- **原因**：当前终端所处目录不正确。
-- **解决**：该相对路径是专为在 `packages` 子目录下执行而设计的。请先确认 `pwd`：
-  - 如果在 `packages` 目录，执行：`../staging_dir/host/bin/apk ...`
-  - 如果在 ImageBuilder 根目录，执行：`./staging_dir/host/bin/apk ...`
+### Q1: 提示 `Failed to load signing key: ../keys/local-private-key.pem`？
+- **原因**：新的 ImageBuilder 解压后，本地私钥尚未生成。
+- **解决**：无需手动执行 `apk adbsign`，直接在 ImageBuilder 根目录下执行：
+  ```bash
+  make _check_keys
+  make package_index
+  ```
+  ImageBuilder 会自动生成 `local-private-key.pem` 并对 `packages.adb` 规范化签名。
 
 ### Q2: 下载 `luci-app-honk` 等包时报 HTTP 404？
 - **原因**：`daeuniverse` 官方仓库的 LuCI 插件采用每日自动构建与滚动发布机制，包名中的 Git commit hash（如 `~6742962`、`~546cb35`）会不定期更新，硬编码旧链接会失效。
