@@ -97,7 +97,41 @@ make -j$(nproc)
    ```
 2. 进入 GitHub 仓库页面的 **Actions** 标签页，点击 **Build & Release Orange Pi Zero 3 iStoreOS 25.12**。
 3. 点击 **Run workflow**，选择 `orangepi-zero3-2512opencode` 分支触发编译。
-4. 构建成功后，镜像将直接发布在 GitHub **Releases** 中，包含可以直接下载的 `.img.gz` 文件。
+4. 构建成功后，镜像及独立的 ImageBuilder 离线包将直接发布在 GitHub **Releases** 中。
+
+### 方式三：使用 ImageBuilder 工具包在任意 Linux 主机极速二次打包（推荐，15秒完成）
+
+如果您已有现成的 ImageBuilder 工具包（如 `opi-zero3-ib-kit.tar.gz`），可以在任何 x86_64 Linux 机器（包括 NAS、Debian、Ubuntu、fnOS、PVE 等）上**免源码、免长耗时编译**，仅需 15 秒重新组装固件：
+
+1. 解压工具包与 ImageBuilder：
+   ```bash
+   tar -xzvf opi-zero3-ib-kit.tar.gz
+   cd ib-bundle
+   tar --zstd -xvf istoreos-imagebuilder-sunxi-cortexa53.Linux-x86_64.tar.zst
+   cd istoreos-imagebuilder-sunxi-cortexa53.Linux-x86_64
+   touch repositories
+   ```
+2. 下载额外插件（Tailscale 与 honk 全家桶）并签名：
+   ```bash
+   cd packages
+   wget -nc https://downloads.openwrt.org/releases/25.12.6/packages/aarch64_cortex-a53/packages/tailscale-1.104.1-r1.apk
+   BASE_URL="https://openwrt.daeuniverse.org/25.12/packages/aarch64_cortex-a53"
+   for pkg in honk luci-app-honk luci-lib-daeuniverse luci-i18n-daeuniverse-zh-cn vmlinux-btf-builtin; do
+     FILE=$(curl -sL "$BASE_URL/" | grep -oE "${pkg}-[0-9][^\"]*\\.apk" | head -n1)
+     [ -n "$FILE" ] && wget -nc "$BASE_URL/$FILE"
+   done
+   ../staging_dir/host/bin/apk mkndx --allow-untrusted --output packages.adb *.apk
+   ../staging_dir/host/bin/apk --allow-untrusted adbsign --sign-key ../keys/local-private-key.pem packages.adb
+   cd ..
+   ```
+3. 一键极速打包：
+   ```bash
+   ALL_PKGS=$(cat ../istoreos-sunxi-cortexa53-xunlong_orangepi-zero3.manifest | cut -d' ' -f1 | tr '\n' ' ')
+   EXTRA_PKGS="tailscale honk luci-app-honk luci-lib-daeuniverse luci-i18n-daeuniverse-zh-cn vmlinux-btf-builtin"
+   make image PROFILE=xunlong_orangepi-zero3 PACKAGES="$ALL_PKGS $EXTRA_PKGS" FILES="../files"
+   ```
+
+> 详细目录层级解析、避坑指南及进阶定制请参阅独立文档：[IMAGEBUILDER_GUIDE.md](IMAGEBUILDER_GUIDE.md)。
 
 ---
 
